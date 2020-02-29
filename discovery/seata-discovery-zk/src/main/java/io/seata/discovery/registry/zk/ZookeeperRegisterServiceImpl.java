@@ -17,6 +17,7 @@ package io.seata.discovery.registry.zk;
 
 import io.seata.common.util.CollectionUtils;
 import io.seata.common.util.NetUtil;
+import io.seata.common.util.StringUtils;
 import io.seata.config.Configuration;
 import io.seata.config.ConfigurationFactory;
 import io.seata.discovery.registry.RegistryService;
@@ -38,6 +39,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 import static io.seata.common.Constants.IP_PORT_SPLIT_CHAR;
 
@@ -45,7 +47,6 @@ import static io.seata.common.Constants.IP_PORT_SPLIT_CHAR;
  * zookeeper path as /registry/zk/
  *
  * @author crazier.huang
- * @date 2019/2/15
  */
 public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildListener> {
     private static final Logger LOGGER = LoggerFactory.getLogger(ZookeeperRegisterServiceImpl.class);
@@ -59,6 +60,8 @@ public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildLis
     private static final String REGISTRY_CLUSTER = "cluster";
     private static final String REGISTRY_TYPE = "zk";
     private static final String SERVER_ADDR_KEY = "serverAddr";
+    private static final String AUTH_USERNAME = "username";
+    private static final String AUTH_PASSWORD = "password";
     private static final String SESSION_TIME_OUT_KEY = "session.timeout";
     private static final String CONNECT_TIME_OUT_KEY = "connect.timeout";
     private static final String FILE_CONFIG_KEY_PREFIX = FILE_ROOT_REGISTRY + FILE_CONFIG_SPLIT_CHAR + REGISTRY_TYPE
@@ -154,12 +157,9 @@ public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildLis
 
             List<IZkChildListener> subscribeList = LISTENER_SERVICE_MAP.get(cluster);
             if (null != subscribeList) {
-                List<IZkChildListener> newSubscribeList = new ArrayList<>();
-                for (IZkChildListener eventListener : subscribeList) {
-                    if (!eventListener.equals(listener)) {
-                        newSubscribeList.add(eventListener);
-                    }
-                }
+                List<IZkChildListener> newSubscribeList = subscribeList.stream()
+                        .filter(eventListener -> !eventListener.equals(listener))
+                        .collect(Collectors.toList());
                 LISTENER_SERVICE_MAP.put(cluster, newSubscribeList);
             }
         }
@@ -209,7 +209,9 @@ public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildLis
                 if (null == zkClient) {
                     zkClient = buildZkClient(FILE_CONFIG.getConfig(FILE_CONFIG_KEY_PREFIX + SERVER_ADDR_KEY),
                         FILE_CONFIG.getInt(FILE_CONFIG_KEY_PREFIX + SESSION_TIME_OUT_KEY),
-                        FILE_CONFIG.getInt(FILE_CONFIG_KEY_PREFIX + CONNECT_TIME_OUT_KEY));
+                        FILE_CONFIG.getInt(FILE_CONFIG_KEY_PREFIX + CONNECT_TIME_OUT_KEY),
+                        FILE_CONFIG.getConfig(FILE_CONFIG_KEY_PREFIX + AUTH_USERNAME),
+                        FILE_CONFIG.getConfig(FILE_CONFIG_KEY_PREFIX + AUTH_PASSWORD));
                 }
             }
         }
@@ -217,10 +219,16 @@ public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildLis
     }
 
     // visible for test.
-    ZkClient buildZkClient(String address, int sessionTimeout, int connectTimeout) {
+    ZkClient buildZkClient(String address, int sessionTimeout, int connectTimeout,String... authInfo) {
         ZkClient zkClient = new ZkClient(address, sessionTimeout, connectTimeout);
         if (!zkClient.exists(ROOT_PATH_WITHOUT_SUFFIX)) {
             zkClient.createPersistent(ROOT_PATH_WITHOUT_SUFFIX, true);
+        }
+        if (null != authInfo && authInfo.length == 2) {
+            if (!StringUtils.isBlank(authInfo[0]) && !StringUtils.isBlank(authInfo[1])) {
+                StringBuilder auth = new StringBuilder(authInfo[0]).append(":").append(authInfo[1]);
+                zkClient.addAuthInfo("digest", auth.toString().getBytes());
+            }
         }
         zkClient.subscribeStateChanges(new IZkStateListener() {
 
@@ -245,7 +253,7 @@ public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildLis
     private void recover() throws Exception {
         // recover Server
         if (!REGISTERED_PATH_SET.isEmpty()) {
-            REGISTERED_PATH_SET.forEach(path -> doRegister(path));
+            REGISTERED_PATH_SET.forEach(this::doRegister);
         }
         // recover client
         if (!LISTENER_SERVICE_MAP.isEmpty()) {
@@ -262,16 +270,13 @@ public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildLis
         }
     }
 
-    private void subscribeCluster(String clusterName) throws Exception {
-        subscribe(clusterName, new IZkChildListener() {
-            @Override
-            public void handleChildChange(String parentPath, List<String> currentChilds) throws Exception {
-                String clusterName = parentPath.replace(ROOT_PATH, "");
-                if (CollectionUtils.isEmpty(currentChilds) && CLUSTER_ADDRESS_MAP.get(clusterName) != null) {
-                    CLUSTER_ADDRESS_MAP.remove(clusterName);
-                } else if (!CollectionUtils.isEmpty(currentChilds)) {
-                    refreshClusterAddressMap(clusterName, currentChilds);
-                }
+    private void subscribeCluster(String cluster) throws Exception {
+        subscribe(cluster, (parentPath, currentChilds) -> {
+            String clusterName = parentPath.replace(ROOT_PATH, "");
+            if (CollectionUtils.isEmpty(currentChilds) && CLUSTER_ADDRESS_MAP.get(clusterName) != null) {
+                CLUSTER_ADDRESS_MAP.remove(clusterName);
+            } else if (!CollectionUtils.isEmpty(currentChilds)) {
+                refreshClusterAddressMap(clusterName, currentChilds);
             }
         });
     }
@@ -294,15 +299,8 @@ public class ZookeeperRegisterServiceImpl implements RegistryService<IZkChildLis
     }
 
     private String getClusterName() {
-        String clusterConfigName = FILE_ROOT_REGISTRY + FILE_CONFIG_SPLIT_CHAR + REGISTRY_TYPE + FILE_CONFIG_SPLIT_CHAR
-            + REGISTRY_CLUSTER;
+        String clusterConfigName = String.join(FILE_CONFIG_SPLIT_CHAR, FILE_ROOT_REGISTRY, REGISTRY_TYPE, REGISTRY_CLUSTER);
         return FILE_CONFIG.getConfig(clusterConfigName);
-    }
-
-    private String getServiceGroup(String key) {
-        Configuration configuration = ConfigurationFactory.getInstance();
-        String clusterNameKey = PREFIX_SERVICE_ROOT + CONFIG_SPLIT_CHAR + PREFIX_SERVICE_MAPPING + key;
-        return configuration.getConfig(clusterNameKey);
     }
 
     private String getRegisterPathByPath(InetSocketAddress address) {

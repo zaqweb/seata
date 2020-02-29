@@ -15,10 +15,6 @@
  */
 package io.seata.server.session;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-
 import io.seata.common.exception.ShouldNeverHappenException;
 import io.seata.common.exception.StoreException;
 import io.seata.common.loader.EnhancedServiceLoader;
@@ -29,6 +25,9 @@ import io.seata.core.constants.ConfigurationKeys;
 import io.seata.core.exception.TransactionException;
 import io.seata.core.model.GlobalStatus;
 import io.seata.core.store.StoreMode;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,7 +80,7 @@ public class SessionHolder {
     /**
      * Init.
      *
-     * @param mode the store mode: file、db
+     * @param mode the store mode: file, db
      * @throws IOException the io exception
      */
     public static void init(String mode) throws IOException {
@@ -102,7 +101,8 @@ public class SessionHolder {
                 new Object[] {RETRY_ROLLBACKING_SESSION_MANAGER_NAME});
         } else if (StoreMode.FILE.equals(storeMode)) {
             //file store
-            String sessionStorePath = CONFIG.getConfig(ConfigurationKeys.STORE_FILE_DIR, DEFAULT_SESSION_STORE_FILE_DIR);
+            String sessionStorePath = CONFIG.getConfig(ConfigurationKeys.STORE_FILE_DIR,
+                DEFAULT_SESSION_STORE_FILE_DIR);
             if (sessionStorePath == null) {
                 throw new StoreException("the {store.file.dir} is empty.");
             }
@@ -166,8 +166,7 @@ public class SessionHolder {
                                 case Committing:
                                 case CommitRetrying:
                                     try {
-                                        globalSession.addSessionLifecycleListener(
-                                            getRetryCommittingSessionManager());
+                                        globalSession.addSessionLifecycleListener(getRetryCommittingSessionManager());
                                         getRetryCommittingSessionManager().addGlobalSession(globalSession);
                                     } catch (TransactionException e) {
                                         throw new ShouldNeverHappenException(e);
@@ -178,8 +177,7 @@ public class SessionHolder {
                                 case TimeoutRollbacking:
                                 case TimeoutRollbackRetrying:
                                     try {
-                                        globalSession.addSessionLifecycleListener(
-                                            getRetryRollbackingSessionManager());
+                                        globalSession.addSessionLifecycleListener(getRetryRollbackingSessionManager());
                                         getRetryRollbackingSessionManager().addGlobalSession(globalSession);
                                     } catch (TransactionException e) {
                                         throw new ShouldNeverHappenException(e);
@@ -257,13 +255,32 @@ public class SessionHolder {
      * @return the global session
      */
     public static GlobalSession findGlobalSession(String xid) {
-        return getRootSessionManager().findGlobalSession(xid);
+        return findGlobalSession(xid, true);
     }
 
-    public static void destory() {
-        ROOT_SESSION_MANAGER.destroy();
-        ASYNC_COMMITTING_SESSION_MANAGER.destroy();
-        RETRY_COMMITTING_SESSION_MANAGER.destroy();
-        RETRY_ROLLBACKING_SESSION_MANAGER.destroy();
+    /**
+     * Find global session.
+     *
+     * @param xid                the xid
+     * @param withBranchSessions the withBranchSessions
+     * @return the global session
+     */
+    public static GlobalSession findGlobalSession(String xid, boolean withBranchSessions) {
+        return getRootSessionManager().findGlobalSession(xid, withBranchSessions);
+    }
+
+    public static void destroy() {
+        if (ROOT_SESSION_MANAGER != null) {
+            ROOT_SESSION_MANAGER.destroy();
+        }
+        if (ASYNC_COMMITTING_SESSION_MANAGER != null) {
+            ASYNC_COMMITTING_SESSION_MANAGER.destroy();
+        }
+        if (RETRY_COMMITTING_SESSION_MANAGER != null) {
+            RETRY_COMMITTING_SESSION_MANAGER.destroy();
+        }
+        if (RETRY_ROLLBACKING_SESSION_MANAGER != null) {
+            RETRY_ROLLBACKING_SESSION_MANAGER.destroy();
+        }
     }
 }

@@ -23,7 +23,6 @@ import io.seata.core.constants.ServerTableColumnsName;
  * The type Lock store sqls.
  *
  * @author zhangsen
- * @date 2019 /4/26
  */
 public class LockStoreSqls {
 
@@ -62,6 +61,13 @@ public class LockStoreSqls {
         "values (?, ?, ?, ?, ?, ?, ?, sysdate, sysdate)";
 
     /**
+     * The constant INSERT_LOCK_SQL_POSTGRESQL.
+     */
+    public static final String INSERT_LOCK_SQL_POSTGRESQL = "insert into " + LOCK_TABLE_PLACEHOLD + "(" + ALL_COLUMNS + ")"
+        +
+        "values (?, ?, ?, ?, ?, ?, ?, now(), now())";
+
+    /**
      * The constant DELETE_LOCK_SQL.
      */
     public static final String DELETE_LOCK_SQL = "delete from " + LOCK_TABLE_PLACEHOLD
@@ -72,6 +78,20 @@ public class LockStoreSqls {
      */
     public static final String BATCH_DELETE_LOCK_SQL = "delete from " + LOCK_TABLE_PLACEHOLD
         + " where " + ServerTableColumnsName.LOCK_TABLE_XID + " = ? and " + ServerTableColumnsName.LOCK_TABLE_ROW_KEY + " in (" + IN_PARAMS_PLACEHOLD + ") ";
+
+    /**
+     * The constant BATCH_DELETE_LOCK_BY_BRANCH_SQL.
+     */
+    public static final String BATCH_DELETE_LOCK_BY_BRANCH_SQL = "delete from " + LOCK_TABLE_PLACEHOLD
+        + " where " + ServerTableColumnsName.LOCK_TABLE_XID + " = ? and " + ServerTableColumnsName.LOCK_TABLE_BRANCH_ID +  " = ? ";
+
+
+    /**
+     * The constant BATCH_DELETE_LOCK_BY_BRANCHS_SQL.
+     */
+    public static final String BATCH_DELETE_LOCK_BY_BRANCHS_SQL = "delete from " + LOCK_TABLE_PLACEHOLD
+        + " where " + ServerTableColumnsName.LOCK_TABLE_XID + " = ? and " + ServerTableColumnsName.LOCK_TABLE_BRANCH_ID + " in (" + IN_PARAMS_PLACEHOLD + ") ";
+
 
     /**
      * The constant QUERY_LOCK_SQL.
@@ -99,6 +119,8 @@ public class LockStoreSqls {
             return INSERT_LOCK_SQL_MYSQL.replace(LOCK_TABLE_PLACEHOLD, lockTable);
         } else if (DBType.ORACLE.name().equalsIgnoreCase(dbType)) {
             return INSERT_LOCK_SQL_ORACLE.replace(LOCK_TABLE_PLACEHOLD, lockTable);
+        } else if (DBType.POSTGRESQL.name().equalsIgnoreCase(dbType)) {
+            return INSERT_LOCK_SQL_POSTGRESQL.replace(LOCK_TABLE_PLACEHOLD, lockTable);
         } else {
             throw new NotSupportYetException("unknown dbType:" + dbType);
         }
@@ -125,6 +147,31 @@ public class LockStoreSqls {
      */
     public static String getBatchDeleteLockSql(String lockTable, String paramPlaceHold, String dbType) {
         return BATCH_DELETE_LOCK_SQL.replace(LOCK_TABLE_PLACEHOLD, lockTable).replace(IN_PARAMS_PLACEHOLD,
+            paramPlaceHold);
+    }
+
+
+    /**
+     * Get batch delete lock sql string.
+     *
+     * @param lockTable      the lock table
+     * @param dbType         the db type
+     * @return the string
+     */
+    public static String getBatchDeleteLockSqlByBranch(String lockTable, String dbType) {
+        return BATCH_DELETE_LOCK_BY_BRANCH_SQL.replace(LOCK_TABLE_PLACEHOLD, lockTable);
+    }
+
+    /**
+     * Get batch delete lock sql string.
+     *
+     * @param lockTable      the lock table
+     * @param paramPlaceHold the param place hold
+     * @param dbType         the db type
+     * @return the string
+     */
+    public static String getBatchDeleteLockSqlByBranchs(String lockTable, String paramPlaceHold, String dbType) {
+        return BATCH_DELETE_LOCK_BY_BRANCHS_SQL.replace(LOCK_TABLE_PLACEHOLD, lockTable).replace(IN_PARAMS_PLACEHOLD,
             paramPlaceHold);
     }
 
